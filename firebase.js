@@ -36,7 +36,7 @@ async function writeGlobalSignals(signalsByMode) {
       mode: signals.mode,
     };
     
-    const docRef = db.doc(`global/signals_${mode}`);
+    const docRef = db.doc(`main_bot/signals_${mode}`);
     batch.set(docRef, {
       json: JSON.stringify(lightSignals),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
