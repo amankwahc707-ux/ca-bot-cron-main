@@ -1,4 +1,4 @@
-name: Signal Scanner
+name: Main Bot Scanner
 on:
   schedule:
     - cron: '*/5 * * * *'
