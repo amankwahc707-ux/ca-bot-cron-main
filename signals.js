@@ -24,11 +24,9 @@ const BIQUOTE_API = "https://biquote.io/api";
 const IV_MS = { "1m": 60000, "5m": 300000, "15m": 900000, "1h": 3600000, "4h": 14400000, "1d": 86400000 };
 const BYBIT_IV = { "1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D" };
 
-const CRYPTO_UNIVERSE = ["BTC","ETH","SOL","BNB","XRP","DOGE","ADA","LINK","AVAX","LTC","BCH","SUI","NEAR","APT","ARB","OP","INJ","TIA","SEI","ATOM","DOT","AAVE","PEPE","WIF","UNI","HYPE","ENA","WLD","ONDO","FET","RENDER","JUP","PYTH","STRK","W","LDO"];
-const FOREX_UNIVERSE = ["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","EURGBP","EURJPY","GBPJPY","EURAUD","EURCAD","AUDJPY","CADJPY","CHFJPY","GBPAUD","GBPCAD","AUDCAD","AUDCHF","NZDJPY"];
-const COMMODITY_UNIVERSE = ["XAUUSD","XAGUSD","XPTUSD","XPDUSD","WTIUSD","BRENTUSD","NATGAS","COPPER"];
-const FOREX_SYMBOLS = new Set(FOREX_UNIVERSE);
-const COMMODITY_SYMBOLS = new Set(COMMODITY_UNIVERSE);
+const CRYPTO_UNIVERSE = ["BTC","ETH","SOL","BNB","XRP","DOGE","ADA","LINK","AVAX","LTC","BCH","SUI","NEAR","APT","ARB","OP","INJ","TIA","SEI","ATOM","DOT","AAVE","PEPE","WIF","AR","TON","TRX","FIL","ENA","WLD","ONDO","FET","RENDER","JUP","PYTH","STRK","W","LDO","ORDI","STX","IMX","HBAR","GRT","SAND","MANA","AXS","FTM","GALA"];
+const FOREX_UNIVERSE = [];
+const COMMODITY_UNIVERSE = [];
 
 function getAssetClass(sym) {
   if (FOREX_SYMBOLS.has(sym)) return "FOREX";
@@ -173,80 +171,32 @@ function volRatio(cs) {
 }
 
 // ═══ CANDLES ═══
-async function fetchBybitCandles(symbol, interval, lookback = 250) {
-  const pair = symbol + "USDT";
-  const bybitIv = BYBIT_IV[interval] || "5";
-  const url = `${BYBIT_API}/v5/market/kline?category=linear&symbol=${pair}&interval=${bybitIv}&limit=${lookback}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
+async function fetchHLCandles(symbol, interval, lookback = 250) {
+  const infoUrl = "https://api.hyperliquid-testnet.xyz/info";
+  const ivMs = { "5m": 300000, "15m": 900000, "1h": 3600000, "4h": 14400000, "1d": 86400000 }[interval];
+  const end = Date.now();
+  const start = end - (ivMs * lookback);
+  
   try {
-    const r = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!r.ok) throw new Error("Bybit HTTP " + r.status);
-    const data = await r.json();
-    if (data.retCode !== 0) throw new Error("Bybit: " + data.retMsg);
-    const list = data.result?.list || [];
-    return list.reverse().map(c => ({ t: +c[0], T: +c[0] + IV_MS[interval], o: +c[1], h: +c[2], l: +c[3], c: +c[4], v: +c[5] }));
-  } catch (e) { clearTimeout(timeoutId); throw e; }
-}
-async function fetchBiquoteCandles(symbol, interval, lookback = 250) {
-  const url = `${BIQUOTE_API}/${symbol}/ohlc?interval=${interval}&limit=${lookback}`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-  try {
-    const r = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!r.ok) throw new Error("Biquote HTTP " + r.status);
-    const data = await r.json();
-    const bars = data.bars || [];
-    return bars.map(bar => ({
-      t: new Date(bar.openTime).getTime(),
-      T: new Date(bar.openTime).getTime() + IV_MS[interval],
-      o: +bar.open, h: +bar.high, l: +bar.low, c: +bar.close,
-      v: +bar.tickVolume || 0
-    }));
-  } catch (e) { clearTimeout(timeoutId); throw e; }
-}
-async function fetchOKXCandles(symbol, interval, lookback = 250) {
-  const okxIv = { "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1D" }[interval] || "5m";
-  const instId = symbol + "-USDT";
-  const url = `https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${okxIv}&limit=${Math.min(lookback, 300)}`;
-  try {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`OKX HTTP ${r.status}`);
-    const data = await r.json();
-    if (data.code !== "0") throw new Error(`OKX ${data.code}: ${data.msg || "unknown"}`);
-    const list = data.data || [];
-    return list.reverse().map(c => ({
-      t: +c[0],
-      T: +c[0] + IV_MS[interval],
-      o: +c[1],
-      h: +c[2],
-      l: +c[3],
-      c: +c[4],
-      v: +c[5]
-    }));
+    const res = await fetch(infoUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "candleSnapshot",
+        req: { coin: symbol, interval, startTime: start, endTime: end }
+      })
+    });
+    const raw = await res.json();
+    if (!Array.isArray(raw)) throw new Error("Invalid HL response");
+    return raw.map(c => ({ t: c.t, T: c.T, o: +c.o, h: +c.h, l: +c.l, c: +c.c, v: +c.v }));
   } catch (e) {
-    console.error(`OKX ${symbol} ${interval}:`, e.message);
+    console.error(`HL ${symbol} ${interval}:`, e.message);
     throw e;
   }
 }
 
 async function fetchCandles(coin, interval, lookback = 320) {
-  if (getAssetClass(coin) === "CRYPTO") {
-    // 🆕 Try OKX first (works from GitHub Actions IPs), Bybit as fallback
-    try {
-      return await fetchOKXCandles(coin, interval, lookback);
-    } catch (e) {
-      try {
-        return await fetchBybitCandles(coin, interval, lookback);
-      } catch (e2) {
-        console.warn(`Both OKX and Bybit failed for ${coin} ${interval}`);
-        return null;
-      }
-    }
-  }
-  return fetchBiquoteCandles(coin, interval, lookback);
+  return fetchHLCandles(coin, interval, lookback);
 }
 const candleCache = new Map();
 async function getCandles(coin, interval, lookback = 320) {
@@ -715,8 +665,6 @@ async function runScanForMode(modeName) {
 
   const universe = [
     ...CRYPTO_UNIVERSE.map(c => ({ coin: c, assetClass: "CRYPTO" })),
-    ...FOREX_UNIVERSE.map(c => ({ coin: c, assetClass: "FOREX" })),
-    ...COMMODITY_UNIVERSE.map(c => ({ coin: c, assetClass: "COMMODITY" })),
   ];
 
   const results = {};
