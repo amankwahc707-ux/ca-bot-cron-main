@@ -574,15 +574,15 @@ function signalFrom(candlesByTf, livePrice, meta = null) {
     return false;
   })();
 
-  const trigger_tf = [];
+    const trigger_tf = [];
   if (pullbackOk || breakoutOk) trigger_tf.push("5m");
   if (pullback15Ok || breakout15Ok) trigger_tf.push("15m");
   if (pullback1hOk || breakout1hOk) trigger_tf.push("1h");
   if (pullback4hOk || breakout4hOk) trigger_tf.push("4h");
   const trigger_tf_str = trigger_tf.join("+");
   const highest_tf = trigger_tf.includes("4h") ? "4h" : trigger_tf.includes("1h") ? "1h" : trigger_tf.includes("15m") ? "15m" : trigger_tf.includes("5m") ? "5m" : null;
-
   const setupOk = trigger_tf.length > 0;
+  const highCertaintySetup = trigger_tf.length >= 2; // 🆕 Multi-TF confluence
   const momentumOk = (() => {
     const c = T["5m"].closes; if (c.length < 4) return false;
     return !(c[c.length-2] < c[c.length-3] && c[c.length-3] < c[c.length-4]);
@@ -644,7 +644,7 @@ function signalFrom(candlesByTf, livePrice, meta = null) {
     const clampedDist = Math.max(minStopDist, Math.min(stopDist, maxStopDist));
     let stop = price - clampedDist;
     const risk = price - stop;
-    const tier = soft >= mode.softBuy + 3 ? "CERTAIN" : "CONFIDENT";
+    const tier = (soft >= mode.softBuy + 3 || highCertaintySetup) ? "CERTAIN" : "CONFIDENT";
     const tp1Mult = tier === "CERTAIN" ? 1.2 : 1.0;
     const tp2Mult = tier === "CERTAIN" ? 3.5 : 2.5;
     return { signal: "BUY", setup: pullbackOk ? "PULLBACK" : "BREAKOUT", confidence: tier, score: bullScore, price, entry: price, stop, tp1: price + tp1Mult * risk, tp2: price + tp2Mult * risk, atr: a5, why: "4h + 1h + 15m up. Pullback with volume.", gatesPassed: passed, gatesTotal: gates.length, soft, trend: T, trigger_tf: trigger_tf_str, highest_tf };
